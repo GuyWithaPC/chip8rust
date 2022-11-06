@@ -8,7 +8,9 @@ use winit::{
 };
 use winit_input_helper::WinitInputHelper;
 
-use std::{thread,time,vec};
+use std::{thread,time,vec,io};
+use std::fs::File;
+use std::io::{Read,Write};
 
 const SCR_WIDTH: usize = 64;
 const SCR_HEIGHT: usize = 32;
@@ -24,8 +26,13 @@ impl RAM {
             space: vec![0; 4096]
         }
     }
-    fn init_default(&mut self) {
-
+    fn init_default(&mut self){
+        let mut font_rom = File::open("SysROM/font.bin").expect("Could not open font file at startup.");
+        let mut buf = [0u8; 80];
+        font_rom.read(&mut buf).expect("could not read from font file at startup.");
+        for i in 0..buf.len() {
+            self.space[i] = buf[i];
+        }
     }
 }
 
@@ -100,6 +107,15 @@ fn main() -> Result<(),Error>{
     // display setup finished. now processor setup begins.
 
     let mut ram = RAM::empty();
+    ram.init_default();
+    println!("ram dump: ");
+    for i in 0..ram.range as usize {
+        print!("{:#02x} ",ram.space[i]);
+        if i % 16 == 15 {
+            println!();
+        }
+    }
+    io::stdout().flush().unwrap();
     let mut callstack = Stack::empty();
     let mut index_register: u16 = 0;
     let mut registers = vec![0u8;16];
