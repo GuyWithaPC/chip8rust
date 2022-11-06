@@ -2,11 +2,13 @@ use log::{debug,error};
 use pixels::{Error, Pixels, SurfaceTexture};
 use winit::{
     dpi::LogicalSize,
-    event::{Event, VirtualKeyCode},
+    event::{Event, VirtualKeyCode, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::WindowBuilder,
 };
 use winit_input_helper::WinitInputHelper;
+
+use std::{thread,time,vec};
 
 const SCR_WIDTH: usize = 64;
 const SCR_HEIGHT: usize = 32;
@@ -22,6 +24,9 @@ impl RAM {
             space: vec![0; 4096]
         }
     }
+    fn init_default(&mut self) {
+
+    }
 }
 
 struct Stack {
@@ -35,13 +40,18 @@ impl Stack {
             size: 0
         }
     }
-    fn push() {
-
+    fn push(&mut self, pointer: u16) {
+        self.pointers.push(pointer);
+        self.size += 1;
+    }
+    fn pop(&mut self) -> u16 {
+        self.size -= 1;
+        self.pointers.pop().unwrap()
     }
 }
 
 struct Display {
-    pixels: Vec<bool> // full on all the pixels
+    pixels: Vec<bool> // this is all the pixels arranged linearly left-right top-bottom
 }
 impl Display {
     fn empty() -> Display {
@@ -89,21 +99,39 @@ fn main() -> Result<(),Error>{
 
     // display setup finished. now processor setup begins.
 
-
+    let mut ram = RAM::empty();
+    let mut callstack = Stack::empty();
+    let mut index_register: u16 = 0;
+    let mut registers = vec![0u8;16];
+    let mut program_counter: u16 = 0x200;
+    let mut delay_timer: u8 = 0;
+    let mut sound_timer: u8 = 0;
 
     // processor setup finished. event loop now.
 
     event_loop.run(move |event, _, control_flow| {
 
-        if let Event::RedrawRequested(_) = event {
-            display.draw(pixels.get_frame_mut());
-            if pixels.render()
-                .map_err(|e| error!("pixels.render() failed: {}", e))
-                .is_err()
-            {
-                *control_flow = ControlFlow::Exit;
-                return;
-            }
+        match event {
+            Event::WindowEvent {
+                event: WindowEvent::CloseRequested,
+                ..
+            } => {
+                control_flow.set_exit();
+            },
+            Event::MainEventsCleared => {
+                window.request_redraw();
+            },
+            Event::RedrawRequested(_) => {
+                display.draw(pixels.get_frame_mut());
+                if pixels.render()
+                    .map_err(|e| error!("pixels.render() failed: {}", e))
+                    .is_err()
+                {
+                    *control_flow = ControlFlow::Exit;
+                    return;
+                }
+            },
+            _ => {}
         }
 
         if input.update(&event) {
