@@ -113,9 +113,10 @@ impl Timers {
     }
     pub fn decrement(&mut self, dur: time::Duration) {
         self.delta += dur.as_millis();
-        if self.delta >= (1000 / 60) {
+        if self.delta >= (3000) {
             self.delay = if self.delay == 0 {0} else {self.delay - 1};
             self.sound = if self.sound == 0 {0} else {self.sound - 1};
+            self.delta = 0;
         }
     }
 }
