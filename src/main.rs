@@ -14,64 +14,15 @@ use std::{thread,time,vec,io};
 use std::fs::File;
 use std::io::{Read,Write};
 
+mod computerparts;
+use computerparts::{RAM,Stack,Instruction,Registers,Timers};
+
 const SCR_WIDTH: usize = 64;
 const SCR_HEIGHT: usize = 32;
 const CYCLES_PER_SECOND: u64 = 100;
 const MICROS_PER_CYCLE: u64 = 1_000_000 / CYCLES_PER_SECOND;
 const CLASSIC_BITSHIFT: bool = false;
 const CLASSIC_JUMP: bool = false;
-
-struct RAM {
-    range: u16,
-    space: Vec<u8>
-}
-impl RAM {
-    fn empty() -> RAM {
-        RAM {
-            range: 4096u16,
-            space: vec![0; 4096]
-        }
-    }
-    fn init_default(&mut self){
-        self.load_from_rom("SysROM/font.bin",0x00);
-    }
-    fn load_from_rom(&mut self, rom_path: &str, start_index: u16) {
-        let mut rom_file = File::open(&rom_path).expect("Could not open the ROM file.");
-        let metadata = std::fs::metadata(&rom_path).expect("Unable to read ROM metadata");
-        let mut read_space = vec![0u8; metadata.len() as usize];
-        rom_file.read(&mut read_space).expect("Could not read from the ROM file.");
-        for i in 0..read_space.len() as u16 {
-            self.set(start_index + i as u16, read_space[i as usize]);
-        }
-    }
-    fn get(&self,index: u16) -> u8 {
-        self.space[index as usize]
-    }
-    fn set(&mut self, index: u16, value: u8) {
-        self.space[index as usize] = value;
-    }
-}
-
-struct Stack {
-    pointers: Vec<u16>,
-    size: usize
-}
-impl Stack {
-    fn empty() -> Stack {
-        Stack {
-            pointers: Vec::new(),
-            size: 0
-        }
-    }
-    fn push(&mut self, pointer: u16) {
-        self.pointers.push(pointer);
-        self.size += 1;
-    }
-    fn pop(&mut self) -> u16 {
-        self.size -= 1;
-        self.pointers.pop().unwrap()
-    }
-}
 
 struct Display {
     pixels: Vec<bool> // this is all the pixels arranged linearly left-right top-bottom
@@ -140,11 +91,11 @@ fn main() -> Result<(),Error>{
 
     let mut ram = RAM::empty();
     ram.init_default();
-    ram.load_from_rom("chip8demos/Keypad Test.ch8",0x200);
+    ram.load_from_rom("chip8demos/c8_test.ch8",0x200);
     println!("ram dump: ");
     for i in 0..ram.range as usize {
-        print!("{:#02x} ",ram.space[i]);
-        if i % 16 == 15 {
+        print!("{:#02x} ",ram.get(i as u16));
+        if i % 16 == 15 && i != 0x1000-1 {
             println!();
             print!("{:#04x} => ",i+1);
         }
@@ -152,193 +103,146 @@ fn main() -> Result<(),Error>{
     io::stdout().flush().unwrap();
 
     let mut callstack = Stack::empty();
-    let mut index_register: u16 = 0;
-    let mut registers = vec![0u8;16];
-    let mut program_counter: u16 = 0x200;
-    let mut delay_timer: u8 = 0;
-    let mut sound_timer: u8 = 0;
-    let mut time_since_count: u128 = 0;
+    let mut registers = Registers::new();
+    let mut timers = Timers::new();
 
     let mut keys_pressed = vec![false;0x10];
 
     let mut rng = rand::thread_rng();
 
+    let mut blocked = KeyBlock {
+        blocked: false,
+        register: 0
+    };
     // processor setup finished. event loop now.
     let now = time::Instant::now();
 
     event_loop.run(move |event, _, control_flow| {
         // do time stuff to decrement the delay timer
-        let delta = now.elapsed().as_millis();
-        time_since_count += delta;
+        let delta = now.elapsed();
+        timers.decrement(delta);
         let now = time::Instant::now();
-        if time_since_count > (1000/60) as u128 {
-            delay_timer = if delay_timer == 0 {0} else {delay_timer - 1};
-            sound_timer = if sound_timer == 0 {0} else {sound_timer - 1};
-            time_since_count = 0;
-        }
 
         // do program counter and instruction stuff
 
-        let mut blocked = KeyBlock {
-            blocked: false,
-            register: 0
-        };
-        if blocked.blocked { // catch the first key to be pressed and save it to
+        if blocked.blocked { // catch the first key to be pressed and save it to the register in the blocker
             for i in 0..0x10 {
                 if keys_pressed[i] {
-                    registers[blocked.register as usize] = i as u8;
+                    registers.set(blocked.register, i as u8);
                     blocked.blocked = false;
                     break;
                 }
             }
         } else {
-            let current_instruction: u16 = ((ram.get(program_counter) as u16) << 8u16) | ram.get(program_counter + 1) as u16;
-            let opcode = (current_instruction & 0xF000) >> 12;
-            //println!("op: {:#04x}",opcode);
-            let n_x: usize = ((current_instruction & 0x0F00) >> 8) as usize;
-            let n_y: usize = ((current_instruction & 0x00F0) >> 4) as usize;
-            let n_n: u8 = (current_instruction & 0x000F) as u8;
-            let n_nn: u8 = (current_instruction & 0x00FF) as u8;
-            let n_nnn = current_instruction & 0x0FFF;
-            program_counter += 2;
-            match opcode {
+            let instruction = Instruction::from_bytes(
+                ram.get(registers.p_c),
+                ram.get(registers.p_c+1)
+            );
+            registers.p_c += 2;
+            match instruction.opcode {
                 0x0 => {
-                    if n_nnn == 0x0E0 {
+                    if instruction.nnn == 0x0E0 { // clear screen
                         display.clear();
-                        println!("cleared the display.");
                     }
-                    if n_nnn == 0x0EE {
-                        print!("returned from a routine at {:#03} to ", program_counter);
-                        program_counter = callstack.pop();
-                        println!("{:03}", program_counter);
+                    if instruction.nnn == 0x0EE { // return from subroutine
+                        registers.p_c = callstack.pop();
                     }
                 },
-                0x1 => {
-                    program_counter = n_nnn;
+                0x1 => { // jump
+                    registers.p_c = instruction.nnn;
                 },
-                0x2 => {
-                    callstack.push(program_counter);
-                    println!("called a routine at {:#03} from {:#03}.", n_nnn, program_counter);
-                    program_counter = n_nnn;
+                0x2 => { // call subroutine
+                    callstack.push(registers.p_c);
+                    registers.p_c = instruction.nnn;
                 },
-                0x3 => {
-                    if registers[n_x] == n_nn {
-                        program_counter = program_counter + 2;
+                0x3 => { // immediate conditional jump (EQ)
+                    if registers.get(instruction.x) == instruction.nn {
+                        registers.p_c += 2;
                     }
                 },
-                0x4 => {
-                    if registers[n_x] != n_nn {
-                        program_counter = program_counter + 2;
+                0x4 => { // immediate conditional jump (NEQ)
+                    if registers.get(instruction.x) != instruction.nn {
+                        registers.p_c += 2;
                     }
                 },
-                0x5 => {
-                    if registers[n_y] == registers[n_x] {
-                        program_counter = program_counter + 2;
+                0x5 => { // register conditional jump (EQ)
+                    if registers.get(instruction.y) == registers.get(instruction.x) {
+                        registers.p_c += 2;
                     }
                 },
-                0x6 => {
-                    registers[n_x as usize] = n_nn as u8;
-                    println!("set register {:#01x} to {:02x}", n_x, n_nn);
+                0x6 => { // immediate load
+                    registers.set(instruction.x,instruction.nn);
                 },
-                0x7 => {
-                    registers[n_x as usize] = ((registers[n_x as usize] as u16 + n_nn as u16) & 0xFF) as u8;
-                    println!("set register {:#01x} to {:02x}", n_x, registers[n_x as usize]);
+                0x7 => { // immediate add
+                    let x = registers.get(instruction.x);
+                    let (result, overflow) = x.overflowing_add(instruction.nn);
+                    registers.set(instruction.x,result);
                 },
-                0x8 => {
-                    // ALU stuff
-                    let rx = registers[n_x];
-                    let ry = registers[n_y];
-                    registers[n_x] = match n_n {
-                        0x0 => {
-                            ry // copy y -> x
+                0x8 => { // ALU stuff
+                    let rx = registers.get(instruction.x);
+                    let ry = registers.get(instruction.y);
+                    let result = match instruction.n {
+                        0x0 => { // copy y -> x
+                            ry
                         },
-                        0x1 => {
-                            rx | ry // bitwise or
+                        0x1 => { // bitwise or
+                            rx | ry
                         },
-                        0x2 => {
-                            rx & ry // bitwise and
+                        0x2 => { // bitwise and
+                            rx & ry
                         },
-                        0x3 => {
-                            rx ^ ry // bitwise xor
+                        0x3 => { // bitwise xor
+                            rx ^ ry
                         },
-                        0x4 => {
-                            let bigvalue: u16 = rx as u16 + ry as u16; // vx + vy
-                            if bigvalue > 255 {
-                                registers[0xF] = 1;
-                            } else {
-                                registers[0xF] = 0;
-                            }
-                            (bigvalue & 0xFF) as u8
+                        0x4 => { // add (with overflow)
+                            let (result, overflow) = rx.overflowing_add(ry);
+                            registers.set_flag(if overflow {1} else {0});
+                            result
                         },
-                        0x5 => {
-                            let subtraction: i16 = rx as i16 - ry as i16; // vx - vy
-                            if rx > ry {
-                                registers[0xF] = 1;
-                            } else {
-                                registers[0xF] = 0;
-                            }
-                            (subtraction & 0xFF) as u8
+                        0x5 => { // subtract rx-ry (with !overflow)
+                            let (result, overflow) = rx.overflowing_sub(ry);
+                            registers.set_flag(if overflow {0} else {1});
+                            result
                         },
-                        0x6 => {
-                            // right bit shift
-                            registers[0xF] = if CLASSIC_BITSHIFT { ry as u8 } else { rx as u8 } & 0x1;
-                            if CLASSIC_BITSHIFT { // legacy behavior
-                                ry >> 1
-                            } else { // modern behavior
-                                println!("shifted {rx} to {}",rx >> 1);
-                                println!("set shift flag to {}",registers[0xF]);
-                                (rx >> 1) & 0xFF
-                            }
+                        0x6 => { // bit shift right (with overflow)
+                            registers.set_flag(rx & 1);
+                            rx >> 2
                         },
-                        0x7 => {
-                            let subtraction: i16 = ry as i16 - rx as i16; // vy - vx
-                            if ry > rx {
-                                registers[0xF] = 1;
-                            } else {
-                                registers[0xF] = 0;
-                            }
-                            (subtraction & 0xFF) as u8
+                        0x7 => { // subtract ry-rx (with !overflow)
+                            let (result, overflow) = ry.overflowing_sub(rx);
+                            registers.set_flag(if overflow {0} else {1});
+                            result
                         },
-                        0xE => {
-                            // left bit shift
-                            registers[0xF] = (if CLASSIC_BITSHIFT { ry } else { rx } >> 7) & 1;
-                            if CLASSIC_BITSHIFT { // legacy behavior
-                                ry << 1
-                            } else { // modern behavior
-                                rx << 1
-                            }
+                        0xE => { // bit shift left (with overflow)
+                            registers.set_flag((rx & 0b10000000) >> 7);
+                            (rx ^ (rx & 0b10000000)) * 2
                         },
                         _ => { rx }
+                    };
+                    registers.set(instruction.x,result);
+                },
+                0x9 => { // register conditional jump (NEQ)
+                    if registers.get(instruction.x) != registers.get(instruction.y) {
+                        registers.p_c += 2;
                     }
                 },
-                0x9 => {
-                    if registers[n_y] != registers[n_x] {
-                        program_counter = program_counter + 2;
-                    }
+                0xA => { // immediate set index register
+                    registers.ind = instruction.nnn;
                 },
-                0xA => {
-                    index_register = n_nnn;
-                    println!("set index register to {:03x}", n_nnn);
+                0xB => { // jump to nnn + r0
+                    registers.p_c = instruction.nnn + registers.get(0x0) as u16;
                 },
-                0xB => {
-                    if CLASSIC_JUMP { // legacy behavior
-                        program_counter = n_nnn + registers[0] as u16;
-                    } else { // modern behavior
-                        program_counter = n_nnn + registers[n_x] as u16;
-                    }
-                },
-                0xC => {
+                0xC => { // set rx to random & nn
                     let random_number: u8 = rand::random();
-                    registers[n_x] = random_number & n_nn;
+                    registers.set(instruction.x,random_number & instruction.nn);
                 },
-                0xD => {
-                    let x_coord = registers[n_x as usize] % 64;
-                    let y_coord = registers[n_y as usize] % 32;
+                0xD => { // draw bytes
+                    let x_coord = registers.get(instruction.x) % 64;
+                    let y_coord = registers.get(instruction.y) % 32;
                     let mut pixflip = false;
-                    println!("draw function called with parameters x: {x_coord}, y: {y_coord}, and bytes: {n_n}.");
-                    let mut draw_bytes = vec![0u8; n_n as usize];
-                    for i in 0..n_n {
-                        let bytebools = byte_to_bools(&ram.get(index_register + i as u16));
+                    let mut draw_bytes = vec![0u8; instruction.n as usize];
+                    for i in 0..instruction.n {
+                        let bytebools = byte_to_bools(&ram.get(registers.ind + i as u16));
                         for x in 0..8 {
                             if bytebools[x] {
                                 let this_pixel = display.flip_pixel(x + (x_coord as usize), (i as usize + y_coord as usize) as usize);
@@ -346,57 +250,55 @@ fn main() -> Result<(),Error>{
                             }
                         }
                     }
-                    registers[0xF] = if pixflip { 1 } else { 0 };
+                    registers.set(0xF,if pixflip { 1 } else { 0 });
                 },
                 0xE => {
-                    if n_nn == 0x9E { // skip if key pressed
-                        if keys_pressed[n_x] {
-                            program_counter += 2;
+                    if instruction.nn == 0x9E { // skip if key pressed
+                        if keys_pressed[instruction.x as usize] {
+                            registers.p_c += 2;
                         }
                     }
-                    if n_nn == 0xA1 { // skip if key not pressed
-                        if !keys_pressed[n_x] {
-                            program_counter += 2;
+                    if instruction.nn == 0xA1 { // skip if key not pressed
+                        if !keys_pressed[instruction.x as usize] {
+                            registers.p_c += 2;
                         }
                     }
                 },
                 0xF => {
-                    match n_nn {
+                    match instruction.nn {
                         0x07 => { // copy delay into vx
-                            registers[n_x] = delay_timer;
-                            println!("Moved delay timer time {} into register {:#01}",delay_timer,n_x);
+                            registers.set(instruction.x,timers.delay);
                         },
                         0x15 => { // copy vx to delay timer
-                            delay_timer = registers[n_x];
-                            println!("Set delay timer to {}",registers[n_x]);
+                            timers.delay = registers.get(instruction.x);
                         },
                         0x18 => { // copy vx to sound timer
-                            sound_timer = registers[n_x];
+                            timers.sound = registers.get(instruction.x);
                         },
                         0x1E => { // add vx to index register
-                            index_register += registers[n_x] as u16;
+                            registers.ind += registers.get(instruction.x) as u16;
                         },
                         0x0A => { // block and get keypress
                             blocked.blocked = true;
-                            blocked.register = n_x as u8;
+                            blocked.register = instruction.x as u8;
                         },
-                        0x29 => { // index register to font character
-                            index_register = registers[n_x] as u16 * 5;
+                        0x29 => { // index register to font character at rx
+                            registers.ind = registers.get(instruction.x) as u16 * 5;
                         },
-                        0x33 => { // binary-coded decimal conversion
-                            let vx = registers[n_x];
-                            ram.set(index_register,vx / 100);
-                            ram.set(index_register+1,(vx / 10) % 10);
-                            ram.set(index_register+2, vx % 10);
+                        0x33 => { // binary-coded decimal conversion of rx
+                            let rx = registers.get(instruction.x);
+                            ram.set(registers.ind,rx / 100);
+                            ram.set(registers.ind+1,(rx / 10) % 10);
+                            ram.set(registers.ind+2, rx % 10);
                         },
                         0x55 => { // memory store
-                            for i in 0..0xF {
-                                ram.set(index_register+i,registers[i as usize]);
+                            for i in 0..0x10 {
+                                ram.set(registers.ind+i,registers.get(i as u8));
                             }
                         },
                         0x65 => { // memory load
-                            for i in 0..0xF {
-                                registers[i] = ram.get(index_register+i as u16);
+                            for i in 0..0x10 {
+                                registers.set(i as u8, ram.get(registers.ind+i as u16));
                             }
                         },
                         _ => {}
@@ -434,22 +336,22 @@ fn main() -> Result<(),Error>{
                 pixels.resize_surface(size.width, size.height);
             }
 
-            keys_pressed[1] = input.key_pressed(VirtualKeyCode::Key1);
-            keys_pressed[2] = input.key_pressed(VirtualKeyCode::Key2);
-            keys_pressed[3] = input.key_pressed(VirtualKeyCode::Key3);
-            keys_pressed[4] = input.key_pressed(VirtualKeyCode::Q);
-            keys_pressed[5] = input.key_pressed(VirtualKeyCode::W);
-            keys_pressed[6] = input.key_pressed(VirtualKeyCode::E);
-            keys_pressed[7] = input.key_pressed(VirtualKeyCode::A);
-            keys_pressed[8] = input.key_pressed(VirtualKeyCode::S);
-            keys_pressed[9] = input.key_pressed(VirtualKeyCode::D);
-            keys_pressed[0] = input.key_pressed(VirtualKeyCode::X);
-            keys_pressed[0xA] = input.key_pressed(VirtualKeyCode::Z);
-            keys_pressed[0xB] = input.key_pressed(VirtualKeyCode::C);
-            keys_pressed[0xC] = input.key_pressed(VirtualKeyCode::Key4);
-            keys_pressed[0xD] = input.key_pressed(VirtualKeyCode::R);
-            keys_pressed[0xE] = input.key_pressed(VirtualKeyCode::F);
-            keys_pressed[0xF] = input.key_pressed(VirtualKeyCode::V);
+            keys_pressed[1] = input.key_held(VirtualKeyCode::Key1);
+            keys_pressed[2] = input.key_held(VirtualKeyCode::Key2);
+            keys_pressed[3] = input.key_held(VirtualKeyCode::Key3);
+            keys_pressed[4] = input.key_held(VirtualKeyCode::Q);
+            keys_pressed[5] = input.key_held(VirtualKeyCode::W);
+            keys_pressed[6] = input.key_held(VirtualKeyCode::E);
+            keys_pressed[7] = input.key_held(VirtualKeyCode::A);
+            keys_pressed[8] = input.key_held(VirtualKeyCode::S);
+            keys_pressed[9] = input.key_held(VirtualKeyCode::D);
+            keys_pressed[0] = input.key_held(VirtualKeyCode::X);
+            keys_pressed[0xA] = input.key_held(VirtualKeyCode::Z);
+            keys_pressed[0xB] = input.key_held(VirtualKeyCode::C);
+            keys_pressed[0xC] = input.key_held(VirtualKeyCode::Key4);
+            keys_pressed[0xD] = input.key_held(VirtualKeyCode::R);
+            keys_pressed[0xE] = input.key_held(VirtualKeyCode::F);
+            keys_pressed[0xF] = input.key_held(VirtualKeyCode::V);
             window.request_redraw();
         }
         //control_flow.set_wait_until(time::Instant::now() + time::Duration::from_micros(MICROS_PER_CYCLE));
