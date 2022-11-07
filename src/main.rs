@@ -318,16 +318,16 @@ fn main() -> Result<(),Error>{
                             ram.set(registers.ind+1,(rx / 10) % 10);
                             ram.set(registers.ind+2, rx % 10);
                         },
-                        0x55 => { // memory store
-                            for i in 0..0x10 {
+                        0x55 => { // memory store from 0 to x
+                            for i in 0..=instruction.x as u16 {
                                 ram.set(registers.ind+i,registers.get(i as u8));
                             }
                             if CLASSIC_LOAD {
                                 registers.ind += 0xF;
                             }
                         },
-                        0x65 => { // memory load
-                            for i in 0..0x10 {
+                        0x65 => { // memory load from 0 to x
+                            for i in 0..=instruction.x as u16 {
                                 registers.set(i as u8, ram.get(registers.ind+i as u16));
                             }
                             if CLASSIC_LOAD {
