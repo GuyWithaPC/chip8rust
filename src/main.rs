@@ -19,13 +19,13 @@ use computerparts::{RAM,Stack,Instruction,Registers,Timers};
 
 const SCR_WIDTH: usize = 64;
 const SCR_HEIGHT: usize = 32;
-const CYCLES_PER_SECOND: u64 = 1_000_000;
+const CYCLES_PER_SECOND: u64 = 600;
 const MICROS_PER_CYCLE: u64 = 1_000_000 / CYCLES_PER_SECOND;
 const CLASSIC_BITSHIFT: bool = false;
 const CLASSIC_JUMP: bool = false;
 const CLASSIC_LOAD: bool = false;
-const PRESS_ONCE: bool = true;
-const FILE_TO_LOAD: &str = "chip8demos/Life.ch8";
+const PRESS_ONCE: bool = false;
+const FILE_TO_LOAD: &str = "chip8demos/TETRIS.ch8";
 
 struct Display {
     pixels: Vec<bool> // this is all the pixels arranged linearly left-right top-bottom
@@ -66,6 +66,14 @@ struct KeyBlock {
 
 fn main() -> Result<(),Error>{
 
+    // get the file to run
+    println!("enter the path to the .ch8 ROM:");
+    let mut load_file = String::new();
+    io::stdin().read_line(&mut load_file).expect("did not enter a valid string.");
+    if let Some('\n') = load_file.chars().next_back() {
+        load_file.pop();
+    }
+
     // display and event loop setup
 
     let event_loop = EventLoop::new();
@@ -101,7 +109,7 @@ fn main() -> Result<(),Error>{
 
     let mut ram = RAM::empty();
     ram.init_default();
-    ram.load_from_rom(FILE_TO_LOAD,0x200);
+    ram.load_from_rom(load_file.as_str(),0x200);
     println!("ram dump: ");
     for i in 0..ram.range as usize {
         print!("{:#02x} ",ram.get(i as u16));
@@ -279,14 +287,16 @@ fn main() -> Result<(),Error>{
                 },
                 0xE => {
                     if instruction.nn == 0x9E { // skip if key pressed
-                        if keys_pressed[instruction.x as usize] {
-                            println!("key press skip: {:#01x}",instruction.x);
+                        let x = registers.get(instruction.x);
+                        if keys_pressed[x as usize] {
+                            //println!("key press skip: V{:#01x} ({})",instruction.x,x);
                             registers.p_c += 2;
                         }
                     }
                     if instruction.nn == 0xA1 { // skip if key not pressed
-                        if !keys_pressed[instruction.x as usize] {
-                            println!("key not pressed skip: {:#01x}",instruction.x);
+                        let x = registers.get(instruction.x);
+                        if !keys_pressed[x as usize] {
+                            //println!("key not pressed skip: V{:#01x} ({})",instruction.x,x);
                             registers.p_c += 2;
                         }
                     }
