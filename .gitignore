@@ -5,3 +5,4 @@ Cargo.lock
 **/*.rs.bk
 *.pdb
 chip8rust.iml
+chip8demos/
