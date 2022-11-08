@@ -1,7 +1,10 @@
+use std::fs::File;
+use std::io::BufReader;
 use std::path::PathBuf;
 
 use olc_pge as olc;
 use olc_pge::Key;
+use rodio::{Decoder, OutputStream, Sink, Source};
 
 mod components;
 mod instructions;
@@ -70,6 +73,7 @@ impl olc::PGEApplication for Emulator {
         }
         if self.run_mode == RUN::Continuous {
             // run continuously at 600 CPS
+            //decrement the timers
             self.cycle_time += delta;
             self.timer_time += delta;
             if self.timer_time >= 1.0 / 60.0 {
@@ -81,6 +85,14 @@ impl olc::PGEApplication for Emulator {
                 };
                 self.timer_time = 0.0;
             }
+            // run the beeper if the sound timer is > 0
+            if self.sound_timer > 0 {
+                self.beeper.play();
+            } else {
+                self.beeper.pause();
+            }
+
+            // run once if the cycle time is full
             if self.cycle_time >= SECONDS_PER_CYCLE {
                 let (redraw, summary) = self.cycle();
                 if redraw {
@@ -94,6 +106,7 @@ impl olc::PGEApplication for Emulator {
             }
         } else {
             // run step-by-step
+            self.beeper.pause(); // it'd be annoying if this kept going
             if pge.get_key(olc::Key::Tab).pressed {
                 self.timer_time += 1.0 / 600.0;
                 if self.timer_time >= 1.0 / 60.0 {
@@ -118,8 +131,27 @@ impl olc::PGEApplication for Emulator {
 }
 
 fn main() {
+    // set up audio (rodio audio setup only works in main)
+    let mut emulator = Emulator::new();
+
+    let (_stream, stream_handle) = OutputStream::try_default().unwrap();
+    let file = File::open("system/square.ogg").unwrap();
+    let new_sound = stream_handle.play_once(BufReader::new(file)).unwrap();
+    new_sound.set_volume(0.2);
+
+    let looping_source = Decoder::new(
+        File::open("system/square.ogg").unwrap()
+    ).unwrap();
+    let looping_source = Source::repeat_infinite(looping_source);
+    new_sound.append(looping_source);
+
+    new_sound.pause();
+
+    emulator.beeper = new_sound;
+
+    // run the olc::pge application
     olc::PixelGameEngine::construct(
-        Emulator::new(),
+        emulator,
         (SCR_W + (SCR_W / 2)) * DRAW_BIGGER_PIXELS as usize,
         (SCR_H + (SCR_H / 2)) * DRAW_BIGGER_PIXELS as usize,
         2,
@@ -142,6 +174,7 @@ struct Emulator {
     key_block: u8,
     keys: [bool; 0x10],
     run_mode: RUN,
+    beeper: Sink,
 }
 impl Emulator {
     fn new() -> Emulator {
@@ -159,6 +192,7 @@ impl Emulator {
             key_block: 0x10,
             keys: [false; 0x10],
             run_mode: START_RUN_MODE,
+            beeper: Sink::try_new(&OutputStream::try_default().unwrap().1).unwrap(),
         }
     }
     fn draw(&mut self, pge: &mut olc::PixelGameEngine) {

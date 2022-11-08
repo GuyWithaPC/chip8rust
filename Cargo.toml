@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 olc-pge = "0.1.2"
 rand = "0.8.5"
+rodio = "0.16.0"
