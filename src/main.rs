@@ -139,9 +139,7 @@ fn main() {
     let new_sound = stream_handle.play_once(BufReader::new(file)).unwrap();
     new_sound.set_volume(0.2);
 
-    let looping_source = Decoder::new(
-        File::open("system/square.ogg").unwrap()
-    ).unwrap();
+    let looping_source = Decoder::new(File::open("system/square.ogg").unwrap()).unwrap();
     let looping_source = Source::repeat_infinite(looping_source);
     new_sound.append(looping_source);
 
