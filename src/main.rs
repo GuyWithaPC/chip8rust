@@ -14,8 +14,6 @@ use components::{Ram, Registers};
 
 const SCR_W: usize = 64;
 const SCR_H: usize = 32;
-const CYCLES_PER_SECOND: f32 = 600.0;
-const SECONDS_PER_CYCLE: f32 = 1.0 / CYCLES_PER_SECOND;
 const DRAW_BIGGER_PIXELS: i32 = 4;
 const START_RUN_MODE: RUN = RUN::Step;
 
@@ -49,6 +47,9 @@ struct Args {
     /// The ROM file to load
     #[clap(short, long, value_parser)]
     rom_file: String,
+    /// The target execution speed for the processor (in cycles per second)
+    #[clap(short, long, default_value_t = 600.0)]
+    cycle_speed: f32,
 }
 
 impl olc::PGEApplication for Emulator {
@@ -97,7 +98,7 @@ impl olc::PGEApplication for Emulator {
             }
 
             // run once if the cycle time is full
-            if self.cycle_time >= SECONDS_PER_CYCLE {
+            if self.cycle_time >= self.time_per_cycle {
                 let (redraw, summary) = self.cycle();
                 if redraw {
                     self.draw(pge);
@@ -140,6 +141,7 @@ fn main() {
     // set up audio (rodio audio setup only works in main)
     let mut emulator = Emulator::new();
     emulator.load_rom(&args.rom_file);
+    emulator.time_per_cycle = 1.0 / args.cycle_speed;
 
     let (_stream, stream_handle) = OutputStream::try_default().unwrap();
     let file = File::open("system/square.ogg").unwrap();
@@ -166,6 +168,7 @@ fn main() {
 }
 
 struct Emulator {
+    time_per_cycle: f32,
     cycle_time: f32,
     timer_time: f32,
     display: [[bool; SCR_H]; SCR_W],
@@ -187,6 +190,7 @@ impl Emulator {
         ram.load_from_rom(0x000, PathBuf::from("system/font.bin"));
 
         Emulator {
+            time_per_cycle: 1.0/600.0,
             timer_time: 0.0,
             cycle_time: 0.0,
             display: [[false; SCR_H]; SCR_W], // x, y format
