@@ -2,6 +2,7 @@ use std::fs::File;
 use std::io::BufReader;
 use std::path::PathBuf;
 
+use clap::Parser;
 use olc_pge as olc;
 use olc_pge::Key;
 use rodio::{Decoder, OutputStream, Sink, Source};
@@ -13,7 +14,6 @@ use components::{Ram, Registers};
 
 const SCR_W: usize = 64;
 const SCR_H: usize = 32;
-const ROM_FILE: &str = "chip8demos/PONG.ch8";
 const CYCLES_PER_SECOND: f32 = 600.0;
 const SECONDS_PER_CYCLE: f32 = 1.0 / CYCLES_PER_SECOND;
 const DRAW_BIGGER_PIXELS: i32 = 4;
@@ -44,13 +44,17 @@ enum RUN {
     Step,
 }
 
+#[derive(Debug, Parser)]
+struct Args {
+    /// The ROM file to load
+    #[clap(short, long, value_parser)]
+    rom_file: String,
+}
+
 impl olc::PGEApplication for Emulator {
     const APP_NAME: &'static str = "Chip8 Emulator - Rust";
 
     fn on_user_create(&mut self, _pge: &mut olc::PixelGameEngine) -> bool {
-        self.ram
-            .load_from_rom(0x000, PathBuf::from("system/font.bin"));
-        self.ram.load_from_rom(0x200, PathBuf::from(ROM_FILE));
         true
     }
 
@@ -131,8 +135,11 @@ impl olc::PGEApplication for Emulator {
 }
 
 fn main() {
+    let args = Args::parse();
+
     // set up audio (rodio audio setup only works in main)
     let mut emulator = Emulator::new();
+    emulator.load_rom(&args.rom_file);
 
     let (_stream, stream_handle) = OutputStream::try_default().unwrap();
     let file = File::open("system/square.ogg").unwrap();
@@ -176,11 +183,14 @@ struct Emulator {
 }
 impl Emulator {
     fn new() -> Emulator {
+        let mut ram = Ram::new();
+        ram.load_from_rom(0x000, PathBuf::from("system/font.bin"));
+
         Emulator {
             timer_time: 0.0,
             cycle_time: 0.0,
             display: [[false; SCR_H]; SCR_W], // x, y format
-            ram: Ram::new(), // using RAM rather than a Vec because it encapsulates ROM loading
+            ram, // using RAM rather than a Vec because it encapsulates ROM loading
             timer: 0x00,     // basic timer
             sound_timer: 0x00, // sound timer, plays a beep while > 0
             registers: Registers::new(), // registers 0 through F
@@ -192,6 +202,9 @@ impl Emulator {
             run_mode: START_RUN_MODE,
             beeper: Sink::try_new(&OutputStream::try_default().unwrap().1).unwrap(),
         }
+    }
+    fn load_rom(&mut self, rom_file: &str) {
+        self.ram.load_from_rom(0x200, PathBuf::from(rom_file));
     }
     fn draw(&mut self, pge: &mut olc::PixelGameEngine) {
         let bigger_draw = if self.run_mode == RUN::Step {
