@@ -51,9 +51,12 @@ impl Emulator {
                 match byte {
                     0xE0 => {
                         // CLS
-                        for mut row in self.display {
-                            row.fill(false);
+                        for x in 0..64 {
+                            for y in 0..32 {
+                                self.display[x][y] = false;
+                            }
                         }
+                        redraw = true;
                         summary += "CLS";
                     }
                     0xEE => {
