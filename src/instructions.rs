@@ -107,7 +107,7 @@ impl Emulator {
             }
             0x7 => {
                 // IMM ADD RX + byte => RX
-                let (result, overflow) = x.overflowing_add(byte);
+                let (result, _overflow) = x.overflowing_add(byte);
                 self.registers.set(x_reg, result);
                 summary +=
                     format!("IMM ADD R{:1X} + {:#4X} => R{:1X}", x_reg, byte, x_reg).as_str();
@@ -141,7 +141,7 @@ impl Emulator {
                     0x4 => {
                         // ADD RX + RY => RX (sets overflow flag)
                         let (result, overflow) = x.overflowing_add(y);
-                        self.registers.set(0xF, if overflow { 1 } else { 0 });
+                        self.registers.set(0xF, u8::from(overflow));
                         self.registers.set(x_reg, result);
                         summary +=
                             format!("ADD R{:1X} + R{:1X} => R{:1X}", x_reg, y_reg, x_reg).as_str();
@@ -149,7 +149,7 @@ impl Emulator {
                     0x5 => {
                         // SUB RX - RY => RX (sets !overflow flag)
                         let (result, overflow) = x.overflowing_sub(y);
-                        self.registers.set(0xF, if overflow { 0 } else { 1 });
+                        self.registers.set(0xF, u8::from(!overflow));
                         self.registers.set(x_reg, result);
                         summary +=
                             format!("SUB R{:1X} - R{:1X} => R{:1X}", x_reg, y_reg, x_reg).as_str();
@@ -163,7 +163,7 @@ impl Emulator {
                     0x7 => {
                         // SUB RY - RX => RX (sets !overflow flag)
                         let (result, overflow) = y.overflowing_sub(x);
-                        self.registers.set(0xF, if overflow { 0 } else { 1 });
+                        self.registers.set(0xF, u8::from(!overflow));
                         self.registers.set(x_reg, result);
                         summary +=
                             format!("SUB R{:1X} - R{:1X} => R{:1X}", y_reg, x_reg, x_reg).as_str();

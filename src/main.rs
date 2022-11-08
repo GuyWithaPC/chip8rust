@@ -105,7 +105,7 @@ impl olc::PGEApplication for Emulator {
                     };
                     self.timer_time = 0.0
                 }
-                let (redraw, summary) = self.cycle();
+                let (_redraw, summary) = self.cycle();
                 self.draw(pge);
                 self.draw_debug(pge, summary);
             }
