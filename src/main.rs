@@ -11,7 +11,7 @@ use components::{RAM,Registers};
 
 const SCR_W: usize = 64;
 const SCR_H: usize = 32;
-const ROM_FILE: &str = "chip8demos/BLINKY.ch8";
+const ROM_FILE: &str = "chip8demos/PONG.ch8";
 const CYCLES_PER_SECOND: f32 = 600.0;
 const SECONDS_PER_CYCLE: f32 = 1.0 / CYCLES_PER_SECOND;
 const DRAW_BIGGER_PIXELS: i32 = 4;
