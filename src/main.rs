@@ -1,4 +1,3 @@
-use std::fmt::Formatter;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::PathBuf;
@@ -16,7 +15,7 @@ use components::{Ram, Registers};
 const SCR_W: usize = 64;
 const SCR_H: usize = 32;
 const DRAW_BIGGER_PIXELS: i32 = 4;
-const START_RUN_MODE: RUN = RUN::Step;
+const START_RUN_MODE: RunMode = RunMode::Step;
 
 const KEYS: [Key; 0x10] = [
     Key::X,
@@ -39,20 +38,20 @@ const KEYS: [Key; 0x10] = [
 
 
 #[derive(PartialEq, Debug, Clone, clap::ValueEnum)]
-enum RUN {
+enum RunMode {
     Play,
     Step,
 }
 
 #[derive(PartialEq, Debug, Clone, clap::ValueEnum)]
-enum COLOR_MODE {
+enum ColorMode {
     Green,
     Gray,
     White,
 }
 
 #[derive(PartialEq, Debug, Clone, clap::ValueEnum)]
-enum INPUT_MODE {
+enum InputMode {
     Once,
     Hold,
 }
@@ -66,14 +65,14 @@ struct Args {
     #[clap(short, long, default_value_t = 600.0)]
     cycle_speed: f32,
     /// Whether to start the program paused or not
-    #[clap(value_enum, short = 'm', long, default_value_t = RUN::Play)]
-    run_mode: RUN,
+    #[clap(value_enum, short = 'm', long, default_value_t = RunMode::Play)]
+    run_mode: RunMode,
     /// The color mode to use for the display
-    #[clap(value_enum, long, default_value_t = COLOR_MODE::White)]
-    color_mode: COLOR_MODE,
+    #[clap(value_enum, long, default_value_t = ColorMode::White)]
+    color_mode: ColorMode,
     /// The mode for the input keys (press once / hold)
-    #[clap(value_enum, long, default_value_t = INPUT_MODE::Hold)]
-    input_mode: INPUT_MODE,
+    #[clap(value_enum, long, default_value_t = InputMode::Hold)]
+    input_mode: InputMode,
 }
 
 impl olc::PGEApplication for Emulator {
@@ -86,9 +85,9 @@ impl olc::PGEApplication for Emulator {
     fn on_user_update(&mut self, pge: &mut olc::PixelGameEngine, delta: f32) -> bool {
         for (i, key) in KEYS.iter().enumerate() {
             match self.input_mode {
-                INPUT_MODE::Hold => { self.keys[i] = pge.get_key(*key).held; },
-                INPUT_MODE::Once => {
-                    if self.run_mode == RUN::Step { // it's still hold mode for stepping, otherwise it'd be hard
+                InputMode::Hold => { self.keys[i] = pge.get_key(*key).held; },
+                InputMode::Once => {
+                    if self.run_mode == RunMode::Step { // it's still hold mode for stepping, otherwise it'd be hard
                         self.keys[i] = pge.get_key(*key).held;
                     } else {
                         self.keys[i] = pge.get_key(*key).pressed;
@@ -109,7 +108,7 @@ impl olc::PGEApplication for Emulator {
                 return true;
             }
         }
-        if self.run_mode == RUN::Play {
+        if self.run_mode == RunMode::Play {
             // run continuously at 600 CPS
             //decrement the timers
             self.cycle_time += delta;
@@ -140,7 +139,7 @@ impl olc::PGEApplication for Emulator {
                 self.cycle_time = 0.0;
             }
             if pge.get_key(olc::Key::Space).pressed {
-                self.run_mode = RUN::Step
+                self.run_mode = RunMode::Step
             }
         } else {
             // run step-by-step
@@ -161,7 +160,7 @@ impl olc::PGEApplication for Emulator {
                 self.draw_debug(pge, summary);
             }
             if pge.get_key(olc::Key::Space).pressed {
-                self.run_mode = RUN::Play
+                self.run_mode = RunMode::Play
             }
         }
         true
@@ -208,7 +207,7 @@ struct Emulator {
     cycle_time: f32,
     timer_time: f32,
     display: [[bool; SCR_H]; SCR_W],
-    color_mode: COLOR_MODE,
+    color_mode: ColorMode,
     ram: Ram,
     timer: u8,
     sound_timer: u8,
@@ -218,8 +217,8 @@ struct Emulator {
     call_stack: Vec<u16>,
     key_block: u8,
     keys: [bool; 0x10],
-    input_mode: INPUT_MODE,
-    run_mode: RUN,
+    input_mode: InputMode,
+    run_mode: RunMode,
     beeper: Sink,
 }
 impl Emulator {
@@ -232,7 +231,7 @@ impl Emulator {
             timer_time: 0.0,
             cycle_time: 0.0,
             display: [[false; SCR_H]; SCR_W], // x, y format
-            color_mode: COLOR_MODE::White,
+            color_mode: ColorMode::White,
             ram, // using RAM rather than a Vec because it encapsulates ROM loading
             timer: 0x00,     // basic timer
             sound_timer: 0x00, // sound timer, plays a beep while > 0
@@ -242,7 +241,7 @@ impl Emulator {
             call_stack: Vec::new(),
             key_block: 0x10,
             keys: [false; 0x10],
-            input_mode: INPUT_MODE::Hold,
+            input_mode: InputMode::Hold,
             run_mode: START_RUN_MODE,
             beeper: Sink::try_new(&OutputStream::try_default().unwrap().1).unwrap(),
         }
@@ -251,20 +250,20 @@ impl Emulator {
         self.ram.load_from_rom(0x200, PathBuf::from(rom_file));
     }
     fn draw(&mut self, pge: &mut olc::PixelGameEngine) {
-        let bigger_draw = if self.run_mode == RUN::Step {
+        let bigger_draw = if self.run_mode == RunMode::Step {
             DRAW_BIGGER_PIXELS
         } else {
             DRAW_BIGGER_PIXELS + (DRAW_BIGGER_PIXELS / 2)
         };
         let color_on = match self.color_mode {
-            COLOR_MODE::White => olc::WHITE,
-            COLOR_MODE::Gray => olc::DARK_GREY,
-            COLOR_MODE::Green => olc::GREEN,
+            ColorMode::White => olc::WHITE,
+            ColorMode::Gray => olc::DARK_GREY,
+            ColorMode::Green => olc::GREEN,
         };
         let color_off = match self.color_mode {
-            COLOR_MODE::White => olc::BLACK,
-            COLOR_MODE::Gray => olc::GREY,
-            COLOR_MODE::Green => olc::VERY_DARK_GREEN,
+            ColorMode::White => olc::BLACK,
+            ColorMode::Gray => olc::GREY,
+            ColorMode::Green => olc::VERY_DARK_GREEN,
         };
         pge.clear(olc::BLACK);
         for x in 0..64 {
@@ -287,7 +286,7 @@ impl Emulator {
         }
     }
     fn draw_debug(&mut self, pge: &mut olc::PixelGameEngine, summary: String) {
-        if self.run_mode == RUN::Step {
+        if self.run_mode == RunMode::Step {
             for i in 0..0x8 {
                 let mut string = String::new();
                 string += format!("R{:1X}:", i).as_str();
