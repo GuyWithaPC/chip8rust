@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use olc_pge as olc;
+use olc_pge::Key;
 
 mod components;
 mod instructions;
@@ -14,6 +15,25 @@ const CYCLES_PER_SECOND: f32 = 600.0;
 const SECONDS_PER_CYCLE: f32 = 1.0 / CYCLES_PER_SECOND;
 const DRAW_BIGGER_PIXELS: i32 = 4;
 const START_RUN_MODE: RUN = RUN::Step;
+
+const KEYS: [Key; 0x10] = [
+    Key::X,
+    Key::K1,
+    Key::K2,
+    Key::K3,
+    Key::Q,
+    Key::W,
+    Key::E,
+    Key::A,
+    Key::S,
+    Key::D,
+    Key::Z,
+    Key::C,
+    Key::K4,
+    Key::R,
+    Key::F,
+    Key::V,
+];
 
 #[derive(PartialEq)]
 enum RUN {
@@ -32,25 +52,13 @@ impl olc::PGEApplication for Emulator {
     }
 
     fn on_user_update(&mut self, pge: &mut olc::PixelGameEngine, delta: f32) -> bool {
-        self.keys[0x0] = pge.get_key(olc::Key::X).held;
-        self.keys[0x1] = pge.get_key(olc::Key::K1).held;
-        self.keys[0x2] = pge.get_key(olc::Key::K2).held;
-        self.keys[0x3] = pge.get_key(olc::Key::K3).held;
-        self.keys[0x4] = pge.get_key(olc::Key::Q).held;
-        self.keys[0x5] = pge.get_key(olc::Key::W).held;
-        self.keys[0x6] = pge.get_key(olc::Key::E).held;
-        self.keys[0x7] = pge.get_key(olc::Key::A).held;
-        self.keys[0x8] = pge.get_key(olc::Key::S).held;
-        self.keys[0x9] = pge.get_key(olc::Key::D).held;
-        self.keys[0xA] = pge.get_key(olc::Key::Z).held;
-        self.keys[0xB] = pge.get_key(olc::Key::C).held;
-        self.keys[0xC] = pge.get_key(olc::Key::K4).held;
-        self.keys[0xD] = pge.get_key(olc::Key::R).held;
-        self.keys[0xE] = pge.get_key(olc::Key::F).held;
-        self.keys[0xF] = pge.get_key(olc::Key::V).held;
+        for (i, key) in KEYS.iter().enumerate() {
+            self.keys[i] = pge.get_key(*key).held;
+        }
+
         if self.key_block != 0x10 {
-            for i in 0..0x10_usize {
-                if self.keys[i] {
+            for (i, key) in self.keys.iter().enumerate() {
+                if *key {
                     self.registers.set(self.key_block, i as u8);
                     self.key_block = 0x10;
                     break;
@@ -140,7 +148,7 @@ impl Emulator {
         Emulator {
             timer_time: 0.0,
             cycle_time: 0.0,
-            display: [[false; SCR_H]; SCR_W],// x, y format
+            display: [[false; SCR_H]; SCR_W], // x, y format
             ram: Ram::new(), // using RAM rather than a Vec because it encapsulates ROM loading
             timer: 0x00,     // basic timer
             sound_timer: 0x00, // sound timer, plays a beep while > 0
