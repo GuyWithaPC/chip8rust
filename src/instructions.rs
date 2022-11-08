@@ -54,7 +54,7 @@ impl Emulator {
                     0xE0 => {
                         // CLS
                         self.display = vec![vec![false; 32]; 64];
-                        summary += format!("CLS").as_str();
+                        summary += "CLS";
                     }
                     0xEE => {
                         // RET
@@ -209,12 +209,12 @@ impl Emulator {
                 for i in 0..n {
                     bytes.push(self.ram.get(self.stack_pointer + i as u16));
                 }
-                for y_off in 0..n as usize {
-                    let bools = byte_to_bools(bytes[y_off]);
-                    for x_off in 0..8 as usize {
+                for (y_off, byte) in bytes.iter().enumerate().take(n as usize) {
+                    let bools = byte_to_bools(*byte);
+                    for (x_off, bit) in bools.iter().enumerate().take(8) {
                         let x_pos = (x as usize + x_off) % 64;
                         let y_pos = (y as usize + y_off) % 32;
-                        if bools[x_off] {
+                        if *bit {
                             if self.display[x_pos][y_pos] {
                                 collision = 1;
                                 self.display[x_pos][y_pos] = false;
@@ -321,5 +321,6 @@ fn byte_to_bools(byte: u8) -> Vec<bool> {
     for i in 0..8 {
         bools.push((byte & (1 << (7 - i))) >> (7 - i) == 1);
     }
-    return bools;
+
+    bools
 }

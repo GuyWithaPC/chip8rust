@@ -6,7 +6,7 @@ use olc_pge as olc;
 mod components;
 mod instructions;
 
-use components::{Registers, RAM};
+use components::{Ram, Registers};
 
 const SCR_W: usize = 64;
 const SCR_H: usize = 32;
@@ -14,12 +14,12 @@ const ROM_FILE: &str = "chip8demos/BLINKY.ch8";
 const CYCLES_PER_SECOND: f32 = 600.0;
 const SECONDS_PER_CYCLE: f32 = 1.0 / CYCLES_PER_SECOND;
 const DRAW_BIGGER_PIXELS: i32 = 4;
-const START_RUN_MODE: RUN = RUN::STEP;
+const START_RUN_MODE: RUN = RUN::Step;
 
 #[derive(PartialEq)]
 enum RUN {
-    CONT,
-    STEP,
+    Continuous,
+    Step,
 }
 
 impl olc::PGEApplication for Emulator {
@@ -50,7 +50,7 @@ impl olc::PGEApplication for Emulator {
         self.keys[0xE] = pge.get_key(olc::Key::F).held;
         self.keys[0xF] = pge.get_key(olc::Key::V).held;
         if self.key_block != 0x10 {
-            for i in 0..0x10 as usize {
+            for i in 0..0x10_usize {
                 if self.keys[i] {
                     self.registers.set(self.key_block, i as u8);
                     self.key_block = 0x10;
@@ -61,7 +61,7 @@ impl olc::PGEApplication for Emulator {
                 return true;
             }
         }
-        if self.run_mode == RUN::CONT {
+        if self.run_mode == RUN::Continuous {
             // run continuously at 600 CPS
             self.cycle_time += delta;
             self.timer_time += delta;
@@ -83,7 +83,7 @@ impl olc::PGEApplication for Emulator {
                 self.cycle_time = 0.0;
             }
             if pge.get_key(olc::Key::Space).pressed {
-                self.run_mode = RUN::STEP
+                self.run_mode = RUN::Step
             }
         } else {
             // run step-by-step
@@ -103,7 +103,7 @@ impl olc::PGEApplication for Emulator {
                 self.draw_debug(pge, summary);
             }
             if pge.get_key(olc::Key::Space).pressed {
-                self.run_mode = RUN::CONT
+                self.run_mode = RUN::Continuous
             }
         }
         true
@@ -125,7 +125,7 @@ struct Emulator {
     cycle_time: f32,
     timer_time: f32,
     display: Vec<Vec<bool>>,
-    ram: RAM,
+    ram: Ram,
     timer: u8,
     sound_timer: u8,
     registers: Registers,
@@ -142,7 +142,7 @@ impl Emulator {
             timer_time: 0.0,
             cycle_time: 0.0,
             display: vec![vec![false; 32]; 64], // x, y format
-            ram: RAM::new(), // using RAM rather than a Vec because it encapsulates ROM loading
+            ram: Ram::new(), // using RAM rather than a Vec because it encapsulates ROM loading
             timer: 0x00,     // basic timer
             sound_timer: 0x00, // sound timer, plays a beep while > 0
             registers: Registers::new(), // registers 0 through F
@@ -155,17 +155,17 @@ impl Emulator {
         }
     }
     fn draw(&mut self, pge: &mut olc::PixelGameEngine) {
-        let bigger_draw = if self.run_mode == RUN::STEP {
+        let bigger_draw = if self.run_mode == RUN::Step {
             DRAW_BIGGER_PIXELS
         } else {
             DRAW_BIGGER_PIXELS + (DRAW_BIGGER_PIXELS / 2)
         };
-        let color_on = if self.run_mode == RUN::STEP {
+        let color_on = if self.run_mode == RUN::Step {
             olc::Pixel::rgb(0xDF, 0x00, 0x00)
         } else {
             olc::Pixel::rgb(0x00, 0xDF, 0x00)
         };
-        let color_off = if self.run_mode == RUN::STEP {
+        let color_off = if self.run_mode == RUN::Step {
             olc::Pixel::rgb(0x10, 0x00, 0x00)
         } else {
             olc::Pixel::rgb(0x00, 0x10, 0x00)
@@ -191,7 +191,7 @@ impl Emulator {
         }
     }
     fn draw_debug(&mut self, pge: &mut olc::PixelGameEngine, summary: String) {
-        if self.run_mode == RUN::STEP {
+        if self.run_mode == RUN::Step {
             for i in 0..0x8 {
                 let mut string = String::new();
                 string += format!("R{:1X}:", i).as_str();

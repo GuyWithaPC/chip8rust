@@ -2,14 +2,12 @@ use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
 
-pub struct RAM {
-    size: u16,
+pub struct Ram {
     space: Vec<u8>,
 }
-impl RAM {
-    pub fn new() -> RAM {
-        RAM {
-            size: 4096,
+impl Ram {
+    pub fn new() -> Ram {
+        Ram {
             space: vec![0u8; 4096],
         }
     }
@@ -45,13 +43,11 @@ impl RAM {
 }
 
 pub struct Registers {
-    size: u8,
     space: Vec<u8>,
 }
 impl Registers {
     pub fn new() -> Registers {
         Registers {
-            size: 0x10,
             space: vec![0u8; 0x10],
         }
     }
