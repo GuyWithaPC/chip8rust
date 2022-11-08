@@ -1,3 +1,4 @@
+use std::fmt::Formatter;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::PathBuf;
@@ -36,10 +37,24 @@ const KEYS: [Key; 0x10] = [
     Key::V,
 ];
 
-#[derive(PartialEq)]
+
+#[derive(PartialEq, Debug, Clone, clap::ValueEnum)]
 enum RUN {
-    Continuous,
+    Play,
     Step,
+}
+
+#[derive(PartialEq, Debug, Clone, clap::ValueEnum)]
+enum COLOR_MODE {
+    Green,
+    Gray,
+    White,
+}
+
+#[derive(PartialEq, Debug, Clone, clap::ValueEnum)]
+enum INPUT_MODE {
+    Once,
+    Hold,
 }
 
 #[derive(Debug, Parser)]
@@ -50,6 +65,15 @@ struct Args {
     /// The target execution speed for the processor (in cycles per second)
     #[clap(short, long, default_value_t = 600.0)]
     cycle_speed: f32,
+    /// Whether to start the program paused or not
+    #[clap(value_enum, short = 'm', long, default_value_t = RUN::Play)]
+    run_mode: RUN,
+    /// The color mode to use for the display
+    #[clap(value_enum, long, default_value_t = COLOR_MODE::White)]
+    color_mode: COLOR_MODE,
+    /// The mode for the input keys (press once / hold)
+    #[clap(value_enum, long, default_value_t = INPUT_MODE::Hold)]
+    input_mode: INPUT_MODE,
 }
 
 impl olc::PGEApplication for Emulator {
@@ -61,7 +85,16 @@ impl olc::PGEApplication for Emulator {
 
     fn on_user_update(&mut self, pge: &mut olc::PixelGameEngine, delta: f32) -> bool {
         for (i, key) in KEYS.iter().enumerate() {
-            self.keys[i] = pge.get_key(*key).held;
+            match self.input_mode {
+                INPUT_MODE::Hold => { self.keys[i] = pge.get_key(*key).held; },
+                INPUT_MODE::Once => {
+                    if self.run_mode == RUN::Step { // it's still hold mode for stepping, otherwise it'd be hard
+                        self.keys[i] = pge.get_key(*key).held;
+                    } else {
+                        self.keys[i] = pge.get_key(*key).pressed;
+                    }
+                },
+            }
         }
 
         if self.key_block != 0x10 {
@@ -76,7 +109,7 @@ impl olc::PGEApplication for Emulator {
                 return true;
             }
         }
-        if self.run_mode == RUN::Continuous {
+        if self.run_mode == RUN::Play {
             // run continuously at 600 CPS
             //decrement the timers
             self.cycle_time += delta;
@@ -128,7 +161,7 @@ impl olc::PGEApplication for Emulator {
                 self.draw_debug(pge, summary);
             }
             if pge.get_key(olc::Key::Space).pressed {
-                self.run_mode = RUN::Continuous
+                self.run_mode = RUN::Play
             }
         }
         true
@@ -142,6 +175,9 @@ fn main() {
     let mut emulator = Emulator::new();
     emulator.load_rom(&args.rom_file);
     emulator.time_per_cycle = 1.0 / args.cycle_speed;
+    emulator.run_mode = args.run_mode;
+    emulator.color_mode = args.color_mode;
+    emulator.input_mode = args.input_mode;
 
     let (_stream, stream_handle) = OutputStream::try_default().unwrap();
     let file = File::open("system/square.ogg").unwrap();
@@ -172,6 +208,7 @@ struct Emulator {
     cycle_time: f32,
     timer_time: f32,
     display: [[bool; SCR_H]; SCR_W],
+    color_mode: COLOR_MODE,
     ram: Ram,
     timer: u8,
     sound_timer: u8,
@@ -181,6 +218,7 @@ struct Emulator {
     call_stack: Vec<u16>,
     key_block: u8,
     keys: [bool; 0x10],
+    input_mode: INPUT_MODE,
     run_mode: RUN,
     beeper: Sink,
 }
@@ -194,6 +232,7 @@ impl Emulator {
             timer_time: 0.0,
             cycle_time: 0.0,
             display: [[false; SCR_H]; SCR_W], // x, y format
+            color_mode: COLOR_MODE::White,
             ram, // using RAM rather than a Vec because it encapsulates ROM loading
             timer: 0x00,     // basic timer
             sound_timer: 0x00, // sound timer, plays a beep while > 0
@@ -203,6 +242,7 @@ impl Emulator {
             call_stack: Vec::new(),
             key_block: 0x10,
             keys: [false; 0x10],
+            input_mode: INPUT_MODE::Hold,
             run_mode: START_RUN_MODE,
             beeper: Sink::try_new(&OutputStream::try_default().unwrap().1).unwrap(),
         }
@@ -216,15 +256,15 @@ impl Emulator {
         } else {
             DRAW_BIGGER_PIXELS + (DRAW_BIGGER_PIXELS / 2)
         };
-        let color_on = if self.run_mode == RUN::Step {
-            olc::Pixel::rgb(0xDF, 0x00, 0x00)
-        } else {
-            olc::Pixel::rgb(0x00, 0xDF, 0x00)
+        let color_on = match self.color_mode {
+            COLOR_MODE::White => olc::WHITE,
+            COLOR_MODE::Gray => olc::DARK_GREY,
+            COLOR_MODE::Green => olc::GREEN,
         };
-        let color_off = if self.run_mode == RUN::Step {
-            olc::Pixel::rgb(0x10, 0x00, 0x00)
-        } else {
-            olc::Pixel::rgb(0x00, 0x10, 0x00)
+        let color_off = match self.color_mode {
+            COLOR_MODE::White => olc::BLACK,
+            COLOR_MODE::Gray => olc::GREY,
+            COLOR_MODE::Green => olc::VERY_DARK_GREEN,
         };
         pge.clear(olc::BLACK);
         for x in 0..64 {
