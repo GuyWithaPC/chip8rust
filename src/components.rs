@@ -2,13 +2,14 @@ use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
 
+const RAM_SIZE: usize = 4096;
 pub struct Ram {
-    space: Vec<u8>,
+    space: [u8; RAM_SIZE],
 }
 impl Ram {
     pub fn new() -> Ram {
         Ram {
-            space: vec![0u8; 4096],
+            space: [0; RAM_SIZE],
         }
     }
     pub fn get(&mut self, addr: u16) -> u8 {
@@ -42,13 +43,14 @@ impl Ram {
     }
 }
 
+const NUM_REGISTERS: usize = 0x10;
 pub struct Registers {
-    space: Vec<u8>,
+    space: [u8; NUM_REGISTERS],
 }
 impl Registers {
     pub fn new() -> Registers {
         Registers {
-            space: vec![0u8; 0x10],
+            space: [0; NUM_REGISTERS],
         }
     }
     pub fn get(&mut self, addr: u8) -> u8 {

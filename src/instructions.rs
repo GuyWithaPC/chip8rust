@@ -53,7 +53,9 @@ impl Emulator {
                 match byte {
                     0xE0 => {
                         // CLS
-                        self.display = vec![vec![false; 32]; 64];
+                        for mut row in self.display {
+                            row.fill(false);
+                        }
                         summary += "CLS";
                     }
                     0xEE => {
@@ -316,10 +318,10 @@ impl Emulator {
     }
 }
 
-fn byte_to_bools(byte: u8) -> Vec<bool> {
-    let mut bools = Vec::new();
-    for i in 0..8 {
-        bools.push((byte & (1 << (7 - i))) >> (7 - i) == 1);
+fn byte_to_bools(byte: u8) -> [bool; 8] {
+    let mut bools = [false; 8];
+    for (i, value) in bools.iter_mut().enumerate() {
+        *value = (byte & (1 << (7 - i))) >> (7 - i) == 1;
     }
 
     bools

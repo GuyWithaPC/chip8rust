@@ -1,5 +1,4 @@
 use std::path::PathBuf;
-use std::vec;
 
 use olc_pge as olc;
 
@@ -124,7 +123,7 @@ fn main() {
 struct Emulator {
     cycle_time: f32,
     timer_time: f32,
-    display: Vec<Vec<bool>>,
+    display: [[bool; SCR_H]; SCR_W],
     ram: Ram,
     timer: u8,
     sound_timer: u8,
@@ -133,7 +132,7 @@ struct Emulator {
     stack_pointer: u16,
     call_stack: Vec<u16>,
     key_block: u8,
-    keys: Vec<bool>,
+    keys: [bool; 0x10],
     run_mode: RUN,
 }
 impl Emulator {
@@ -141,7 +140,7 @@ impl Emulator {
         Emulator {
             timer_time: 0.0,
             cycle_time: 0.0,
-            display: vec![vec![false; 32]; 64], // x, y format
+            display: [[false; SCR_H]; SCR_W],// x, y format
             ram: Ram::new(), // using RAM rather than a Vec because it encapsulates ROM loading
             timer: 0x00,     // basic timer
             sound_timer: 0x00, // sound timer, plays a beep while > 0
@@ -150,7 +149,7 @@ impl Emulator {
             stack_pointer: 0x000, // doesn't matter where this starts, programs will modify it
             call_stack: Vec::new(),
             key_block: 0x10,
-            keys: vec![false; 0x10],
+            keys: [false; 0x10],
             run_mode: START_RUN_MODE,
         }
     }
