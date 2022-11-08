@@ -1,6 +1,4 @@
 use crate::Emulator;
-use rand::Rng;
-use std::vec;
 
 pub struct Instruction {
     opcode: u8,
